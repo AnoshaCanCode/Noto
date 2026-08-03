@@ -49,7 +49,7 @@ def four_point_transform(image, pts): # get an image and a set of 4 corners
     dst = np.array([
         [0, 0],                          # top-left
         [maxWidth - 1, 0],               # top-right
-        [maxWidth - 1, maxHeight - 1],    # bottom-right
+        [maxWidth - 1, maxHeight - 1],   # bottom-right
         [0, maxHeight - 1]               # bottom-left
     ], dtype="float32")
 
