@@ -1,12 +1,14 @@
 import base64
 import os
 import cv2
-import io
+import uuid
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
 from backend.scanner_service import detect_document
 from backend.ocr_service import ocr_service
+from backend.vector_db import index_ocr_blocks
+from pydantic import BaseModel
+from backend.vector_db import index_ocr_blocks, search_notes
 
 app = FastAPI(title="Noto API", version="0.1.0")
 
@@ -25,7 +27,6 @@ def read_root():
 
 @app.post("/scan")
 async def scan_document(file: UploadFile = File(...)):
-    # read the uploaded file bytes
     contents = await file.read()
     
     temp_path = f"temp_{file.filename}"
@@ -33,18 +34,47 @@ async def scan_document(file: UploadFile = File(...)):
         f.write(contents)
         
     try:
+        # OpenCV perspective warping
         warped_image = detect_document(temp_path)
-        ocr_json_result = ocr_service.extract_layout(warped_image) # add ocr
+        
+        # Extract OCR layout using your service
+        ocr_json_result = ocr_service.extract_layout(warped_image)
     finally:
-        # clean up the temporary file so our server doesn't get cluttered
+        # Clean up temporary file
         if os.path.exists(temp_path):
             os.remove(temp_path)
     
-    # encode warped image to base64 string to send inside JSON 
+    # Encode warped image to base64 string for UI rendering
     _, encoded_img = cv2.imencode('.jpg', warped_image)
     base64_image = base64.b64encode(encoded_img).decode('utf-8')
-    
-    return JSONResponse(content={
+
+    # Index OCR text blocks into Qdrant Cloud
+    page_id = f"doc_{uuid.uuid4().hex[:8]}"
+    text_blocks = ocr_json_result.get("text_blocks", [])
+    indexed_count = index_ocr_blocks(text_blocks, page_id=page_id)
+
+    return {
+        "page_id": page_id,
+        "indexed_blocks": indexed_count,
         "image_base64": f"data:image/jpeg;base64,{base64_image}",
         "ocr_data": ocr_json_result
-    })
+    }
+
+# RAG (Search)
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+
+@app.post("/search")
+async def search_documents(payload: SearchRequest):
+    """Searches indexed notes using semantic vector search against Qdrant Cloud."""
+    if not payload.query.strip():
+        return {"results": []}
+        
+    results = search_notes(query_text=payload.query, limit=payload.limit)
+    
+    return {
+        "query": payload.query,
+        "match_count": len(results),
+        "results": results
+    }
