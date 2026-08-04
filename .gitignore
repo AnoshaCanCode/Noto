@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local llama.cpp binaries
+*.exe
+*.dll
+llama_bin/
