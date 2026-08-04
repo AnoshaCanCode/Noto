@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.scanner_service import detect_document
 from backend.ocr_service import ocr_service
 from backend.vector_db import index_ocr_blocks
+from pydantic import BaseModel
+from backend.vector_db import index_ocr_blocks, search_notes
 
 app = FastAPI(title="Noto API", version="0.1.0")
 
@@ -56,4 +58,23 @@ async def scan_document(file: UploadFile = File(...)):
         "indexed_blocks": indexed_count,
         "image_base64": f"data:image/jpeg;base64,{base64_image}",
         "ocr_data": ocr_json_result
+    }
+
+# RAG (Search)
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+
+@app.post("/search")
+async def search_documents(payload: SearchRequest):
+    """Searches indexed notes using semantic vector search against Qdrant Cloud."""
+    if not payload.query.strip():
+        return {"results": []}
+        
+    results = search_notes(query_text=payload.query, limit=payload.limit)
+    
+    return {
+        "query": payload.query,
+        "match_count": len(results),
+        "results": results
     }

@@ -28,8 +28,9 @@ def init_vector_db():
             vectors_config=VectorParams(size=384, distance=Distance.COSINE)
         )
 
+# RAG stage 1
 def index_ocr_blocks(text_blocks: list, page_id: str) -> int:
-    """Embeds OCR text blocks and upserts them as points into Qdrant."""
+    """Embeds OCR text blocks and upserts them as points into Qdrant"""
     init_vector_db()  # to ensure 'noto_pages' collection exists before indexing
 
     if not text_blocks:
@@ -60,3 +61,30 @@ def index_ocr_blocks(text_blocks: list, page_id: str) -> int:
         points=points
     )
     return len(points)
+
+# RAG stage 2
+def search_notes(query_text: str, limit: int = 5) -> list:
+    """Embeds a search query and finds the most semantically similar OCR text blocks in Qdrant"""
+    # Embed the search query into a 384-dim vector using the same model
+    query_vector = list(embedding_model.embed([query_text]))[0].tolist()
+
+    # Perform vector similarity search in Qdrant Cloud (Cosine similarity)
+    search_results = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_vector,
+        limit=limit
+    ).points
+
+    # Format the results to extract payloads and score
+    formatted_results = []
+    for hit in search_results:
+        formatted_results.append({
+            "score": hit.score,  # similarity score (closer to 1.0 is a stronger match)
+            "text": hit.payload.get("text"),
+            "bbox": hit.payload.get("bbox"),
+            "label": hit.payload.get("label"),
+            "page_id": hit.payload.get("page_id"),
+            "confidence": hit.payload.get("confidence")
+        })
+
+    return formatted_results
