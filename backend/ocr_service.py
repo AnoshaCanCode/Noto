@@ -1,31 +1,30 @@
 import cv2
 from PIL import Image
 from surya.recognition import RecognitionPredictor
-from surya.detection import DetectionPredictor
 
 class SuryaOCRService:
     def __init__(self):
         print("Initializing Surya OCR models...")
         self.recognition_predictor = RecognitionPredictor()
-        self.detection_predictor = DetectionPredictor()
 
     def extract_layout(self, image_cv2): # accepts an OpenCV image (numpy array), converts it, extracts text, bounding boxes, layout structures
-
         # convert OpenCV BGR image to PIL RGB Image
         image_rgb = cv2.cvtColor(image_cv2, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(image_rgb)
 
-        predictions = self.recognition_predictor([pil_image], [self.detection_predictor])
+        predictions = self.recognition_predictor([pil_image])
 
         # parse results into a clean JSON-serializable structure
         page_result = predictions[0]
         extracted_blocks = []
 
-        for item in page_result.text_lines:
+        for item in page_result.blocks:
+            text_content = getattr(item, "text", None) or getattr(item, "html", "")
             block = {
-                "text": item.text,
-                "confidence": item.confidence,
-                "bbox": item.bbox  # [x1, y1, x2, y2] coordinate format
+                "text": text_content,
+                "confidence": getattr(item, "confidence", 1.0),
+                "bbox": getattr(item, "bbox", []),
+                "label": getattr(item, "label", "Text")
             }
             extracted_blocks.append(block)
 
